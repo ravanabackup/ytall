@@ -77,7 +77,9 @@
         videoList = lines
           .filter(line => line.includes("https://www.youtube.com/"))
           .map(line => extractVideoID(line.trim()));
-        currentIndex = 0;
+
+        const savedIndex = localStorage.getItem("lastIndex");
+        currentIndex = savedIndex && savedIndex < videoList.length ? parseInt(savedIndex) : 0;
         playVideo(currentIndex);
       };
       reader.readAsText(file);
@@ -96,11 +98,11 @@
       if (videoList[index]) {
         const id = videoList[index];
         player.src = `https://www.youtube.com/embed/${id}?autoplay=1&enablejsapi=1`;
+        localStorage.setItem("lastIndex", index);
       }
     }
 
     function pauseVideo() {
-      // Send postMessage to pause YouTube iframe
       player.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
     }
 
@@ -127,12 +129,16 @@
       }
     }
 
-    // Setup YouTube iframe API for pause control
-    window.addEventListener("message", function(e) {
-      if (e.origin.includes("youtube")) {
-        // receive YouTube player events if needed
+    // Restore last video ID if user refreshes without re-uploading the file
+    window.onload = () => {
+      const savedIndex = localStorage.getItem("lastIndex");
+      const savedVideo = localStorage.getItem("lastVideoID");
+      if (savedVideo) {
+        videoList = [savedVideo]; // just show the saved video if no file is reuploaded
+        currentIndex = savedIndex ? parseInt(savedIndex) : 0;
+        playVideo(currentIndex);
       }
-    });
+    };
   </script>
 </body>
 </html>
