@@ -18,13 +18,17 @@
       margin-bottom: 30px;
       cursor: pointer;
     }
-    button, input[type="number"] {
+    button, input[type="number"], label {
       font-size: 18px;
       padding: 10px 20px;
       margin: 10px;
       border: none;
       border-radius: 8px;
       cursor: pointer;
+    }
+    input[type="checkbox"] {
+      transform: scale(1.5);
+      margin: 0 10px;
     }
     iframe {
       width: 90%;
@@ -44,7 +48,7 @@
   <div id="dropzone">📂 Drop your .txt file here (HTML or plain text)</div>
 
   <div id="player-container">
-    <iframe id="ytplayer" src="" allowfullscreen allow="autoplay"></iframe>
+    <iframe id="ytplayer" src="" allowfullscreen allow="autoplay" allow="encrypted-media"></iframe>
   </div>
 
   <div>
@@ -54,19 +58,22 @@
     <button onclick="nextVideo()">⏭️ Next</button>
   </div>
 
-  <div>
-    <span id="status">Video 0 / 0</span>
-  </div>
+  <div id="status">Video 0 / 0</div>
 
-  <div style="margin-top: 15px;">
+  <div>
     <input type="number" id="jumpInput" placeholder="Enter video no." min="1" />
     <button onclick="jumpToVideo()">⏩ Jump</button>
   </div>
 
-  <script>
-    let videoList = [];
-    let currentIndex = 0;
+  <div style="margin-top: 15px;">
+    <label><input type="checkbox" id="autoNext" checked> Autoplay Next</label>
+    <label><input type="checkbox" id="randomStart" checked> Random Start</label>
+  </div>
 
+  <script>
+    let videoList = []; // Array of {id, isShort}
+    let currentIndex = 0;
+    let skipTimer = null;
     const player = document.getElementById("ytplayer");
     const dropzone = document.getElementById("dropzone");
     const status = document.getElementById("status");
@@ -89,23 +96,33 @@
 
       reader.onload = function(event) {
         const rawText = event.target.result;
-
         const parser = new DOMParser();
         const doc = parser.parseFromString(rawText, "text/html");
 
-        // Extract only valid YouTube hrefs
         const anchors = Array.from(doc.querySelectorAll("a[href*='youtube.com/watch?v=']"));
-        const idsFromAnchors = anchors
-          .map(a => a.getAttribute("href"))
-          .map(href => extractVideoID(href));
+        const extracted = anchors.map(a => {
+          const href = a.getAttribute("href");
+          const id = extractVideoID(href);
+          const parentText = a.parentElement.innerText.toLowerCase();
+          const isShort = parentText.includes("shorts");
+          return { id, isShort };
+        });
 
-        // Also support plain text YouTube links
-        const plainLinks = Array.from(rawText.matchAll(/https:\/\/www\.youtube\.com\/watch\?v=[\w-]+/g))
-          .map(m => extractVideoID(m[0]));
+        const plain = Array.from(rawText.matchAll(/https:\/\/www\.youtube\.com\/watch\?v=[\w-]+/g)).map(match => {
+          return { id: extractVideoID(match[0]), isShort: false };
+        });
 
-        const allIDs = [...new Set([...idsFromAnchors, ...plainLinks])];
-        videoList = allIDs.filter(Boolean);
+        const merged = [...extracted, ...plain];
+        const unique = [];
+        const seen = new Set();
+        for (const item of merged) {
+          if (item.id && !seen.has(item.id)) {
+            unique.push(item);
+            seen.add(item.id);
+          }
+        }
 
+        videoList = unique;
         const savedIndex = localStorage.getItem("lastIndex");
         currentIndex = savedIndex && savedIndex < videoList.length ? parseInt(savedIndex) : 0;
         playVideo(currentIndex);
@@ -120,22 +137,37 @@
     }
 
     function playVideo(index) {
+      clearTimeout(skipTimer);
+
       if (videoList[index]) {
-        const id = videoList[index];
-        player.src = `https://www.youtube.com/embed/${id}?autoplay=1&enablejsapi=1`;
+        const { id, isShort } = videoList[index];
+        const useRandom = document.getElementById("randomStart").checked;
+        let startTime = 0;
+
+        if (useRandom) {
+          startTime = isShort ? 5 : Math.floor(Math.random() * 30) + 30; // 30–60s
+        }
+
+        player.src = `https://www.youtube.com/embed/${id}?autoplay=1&start=${startTime}&enablejsapi=1`;
         localStorage.setItem("lastIndex", index);
         localStorage.setItem("lastVideoID", id);
         updateStatus();
+
+        // skip after 10s
+        skipTimer = setTimeout(() => {
+          if (document.getElementById("autoNext").checked) nextVideo();
+        }, 10000);
       }
     }
 
     function pauseVideo() {
       player.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+      clearTimeout(skipTimer);
     }
 
     function copyCurrentURL() {
       if (videoList[currentIndex]) {
-        const fullURL = `https://www.youtube.com/watch?v=${videoList[currentIndex]}`;
+        const fullURL = `https://www.youtube.com/watch?v=${videoList[currentIndex].id}`;
         navigator.clipboard.writeText(fullURL).then(() => {
           alert("Copied: " + fullURL);
         });
@@ -143,6 +175,7 @@
     }
 
     function nextVideo() {
+      clearTimeout(skipTimer);
       if (currentIndex < videoList.length - 1) {
         currentIndex++;
         playVideo(currentIndex);
@@ -150,6 +183,7 @@
     }
 
     function prevVideo() {
+      clearTimeout(skipTimer);
       if (currentIndex > 0) {
         currentIndex--;
         playVideo(currentIndex);
@@ -175,7 +209,7 @@
       const savedID = localStorage.getItem("lastVideoID");
       const savedIndex = localStorage.getItem("lastIndex");
       if (savedID) {
-        videoList = [savedID];
+        videoList = [{ id: savedID, isShort: false }];
         currentIndex = savedIndex ? parseInt(savedIndex) : 0;
         playVideo(currentIndex);
       }
