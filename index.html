@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>YouTube Playlist from Text</title>
+  <style>
+    body {
+      background: #111;
+      color: #fff;
+      font-family: sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    #dropzone {
+      border: 3px dashed #444;
+      padding: 50px;
+      margin-bottom: 30px;
+      cursor: pointer;
+    }
+    button {
+      font-size: 18px;
+      padding: 15px 25px;
+      margin: 10px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    iframe {
+      width: 90%;
+      height: 400px;
+      max-width: 800px;
+      margin: 20px auto;
+      border: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎬 YouTube Player from TXT File</h1>
+  <div id="dropzone">📂 Drop your .txt file here</div>
+
+  <div id="player-container">
+    <iframe id="ytplayer" src="" allowfullscreen allow="autoplay"></iframe>
+  </div>
+
+  <div>
+    <button onclick="prevVideo()">⏮️ Back</button>
+    <button onclick="pauseVideo()">⏸️ Pause</button>
+    <button onclick="copyCurrentURL()">🔗 Copy URL</button>
+    <button onclick="nextVideo()">⏭️ Next</button>
+  </div>
+
+  <script>
+    let videoList = [];
+    let currentIndex = 0;
+
+    const player = document.getElementById("ytplayer");
+    const dropzone = document.getElementById("dropzone");
+
+    dropzone.addEventListener("dragover", e => {
+      e.preventDefault();
+      dropzone.style.borderColor = "#0f0";
+    });
+
+    dropzone.addEventListener("dragleave", () => {
+      dropzone.style.borderColor = "#444";
+    });
+
+    dropzone.addEventListener("drop", e => {
+      e.preventDefault();
+      dropzone.style.borderColor = "#444";
+
+      const file = e.dataTransfer.files[0];
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const lines = event.target.result.split("\n");
+        videoList = lines
+          .filter(line => line.includes("https://www.youtube.com/"))
+          .map(line => extractVideoID(line.trim()));
+        currentIndex = 0;
+        playVideo(currentIndex);
+      };
+      reader.readAsText(file);
+    });
+
+    function extractVideoID(url) {
+      let videoID = "";
+      const match = url.match(/(?:v=|\.be\/)([^&\n]+)/);
+      if (match && match[1]) {
+        videoID = match[1];
+      }
+      return videoID;
+    }
+
+    function playVideo(index) {
+      if (videoList[index]) {
+        const id = videoList[index];
+        player.src = `https://www.youtube.com/embed/${id}?autoplay=1&enablejsapi=1`;
+      }
+    }
+
+    function pauseVideo() {
+      // Send postMessage to pause YouTube iframe
+      player.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+    }
+
+    function copyCurrentURL() {
+      if (videoList[currentIndex]) {
+        const fullURL = `https://www.youtube.com/watch?v=${videoList[currentIndex]}`;
+        navigator.clipboard.writeText(fullURL).then(() => {
+          alert("Copied: " + fullURL);
+        });
+      }
+    }
+
+    function nextVideo() {
+      if (currentIndex < videoList.length - 1) {
+        currentIndex++;
+        playVideo(currentIndex);
+      }
+    }
+
+    function prevVideo() {
+      if (currentIndex > 0) {
+        currentIndex--;
+        playVideo(currentIndex);
+      }
+    }
+
+    // Setup YouTube iframe API for pause control
+    window.addEventListener("message", function(e) {
+      if (e.origin.includes("youtube")) {
+        // receive YouTube player events if needed
+      }
+    });
+  </script>
+</body>
+</html>
